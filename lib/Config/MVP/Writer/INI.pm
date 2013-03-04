@@ -12,9 +12,9 @@ use warnings;
 
 package Config::MVP::Writer::INI;
 {
-  $Config::MVP::Writer::INI::VERSION = '0.001';
+  $Config::MVP::Writer::INI::VERSION = '0.002';
 }
-# git description: 9e213c2
+# git description: v0.001-21-gc5e9bbd
 
 BEGIN {
   $Config::MVP::Writer::INI::AUTHORITY = 'cpan:RWSTAUNER';
@@ -27,8 +27,8 @@ use List::AllUtils ();
 
 has spacing => (
   is         => 'ro',
-  isa        => enum([qw( none all config )]),
-  default    => 'config',
+  isa        => enum([qw( none all payload )]),
+  default    => 'payload',
 );
 
 
@@ -56,8 +56,8 @@ sub ini_string {
     # put a blank line after each section
     @strings = map { "$_\n" } @strings;
   }
-  elsif( $spacing eq 'config' ){
-    # put a blank line around any section with a config
+  elsif( $spacing eq 'payload' ){
+    # put a blank line around any section with a payload
     @strings = map { /\n.+/ ? "\n$_\n" : $_ } @strings;
   }
 
@@ -65,8 +65,10 @@ sub ini_string {
 
   # don't need to start with a newline
   $ini =~ s/\A\n+//;
+  # don't need more than two together (single blank line)
+  $ini =~ s/(?<=\n\n)\n+//g;
   # one newline at the end is sufficient
-  $ini =~ s/\n{2,}\z//;
+  $ini =~ s/\n*\z/\n/;
 
   return $ini;
 }
@@ -74,18 +76,23 @@ sub ini_string {
 sub _ini_section {
   my ($self, $section) = @_;
 
-  $section = [ $section ]
-    unless ref($section) eq 'ARRAY';
+  # break the reference, make one if we don't have one
+  $section = ref($section) eq 'ARRAY' ? [@$section] : [$section];
 
-  my ($name, $package, $config) = @$section;
-  $package ||= $name;
+  my $config  = ref($section->[-1]) eq 'HASH' ? pop @$section : {};
+  my $name    = shift @$section;
+  my $package = shift @$section || $name;
 
   if( $self->can_rewrite_package ){
-    $package = $self->rewrite_package($package);
+    # copy the value and offer it as $_
+    local $_ = $package;
+    # only use if something was returned
+    $package = $self->rewrite_package($_) || $package;
   }
 
   # FIXME: this handles the bundle prefix but not the whole moniker (class suffix)
-  my $ini = "[$package" . ($name =~ /^(.+?\/)?$package$/ ? '' : " / $name") . "]\n";
+  # NOTE: I forgot what this ^^ means
+  my $ini = "[$package" . ($name =~ m{^([^/]+/)*\Q$package\E$} ? '' : " / $name") . "]\n";
 
   $ini .= $self->_ini_section_config($config);
 
@@ -171,7 +178,7 @@ Config::MVP::Writer::INI - Build an INI file for Config::MVP
 
 =head1 VERSION
 
-version 0.001
+version 0.002
 
 =head1 SYNOPSIS
 
@@ -182,6 +189,55 @@ version 0.001
 This class takes a collection of L<Config::MVP> style data structures
 and writes them to a string in INI format.
 
+One usage example would be to create a roughly equivalent INI file
+from the output of a plugin bundle (L<Dist::Zilla>, L<Pod::Weaver>, etc.).
+
+The author makes no claim that this would actually be useful to anyone.
+
+=head1 ATTRIBUTES
+
+=head2 rewrite_package
+
+This attribute is a coderef that will be used to munge the package name
+of each section.  The package will be passed as the only argument
+(and also available as C<$_>) and should return the translation.
+If nothing is returned the original package will be used.
+
+This can be used to flavor the INI for a particular application.
+For example:
+
+  rewrite_package => sub { s/^MyApp::Plugin::/-/r; }
+
+will transform an array ref of
+
+  [ Stinky => 'MyApp::Plugin::Nickname' => {real_name => "Dexter"} ]
+
+into an INI string of
+
+  [-Nickname / Stinky]
+  real_name = Dexter
+
+=head2 spacing
+
+Defines the spacing between sections.
+Must be one of the following:
+
+=over 4
+
+=item payload
+
+(Default) Put blank lines around sections with a payload
+
+=item all
+
+Put a blank line between all sections
+
+=item none
+
+No blank lines
+
+=back
+
 =head1 METHODS
 
 =head2 ini_string
@@ -190,10 +246,17 @@ This takes an array ref of array refs,
 each one being a C<Config::MVP> style section specification:
 
   [
-    [ $name, $package, \%config ],
+    [ $name, $package, \%payload ],
   ]
 
 and returns a string.
+
+For convenience a few specification shortcuts are recognized:
+
+  $name                => [ $name, $name, {} ]
+  [ $name ]            => [ $name, $name, {} ]
+  [ $name, $package ]  => [ $name, $package, {} ]
+  [ $name, \%payload ] => [ $name, $name, \%payload ]
 
 =for comment has simplify_bundles => (
   is         => 'ro',
@@ -217,7 +280,11 @@ Documentation
 
 =item *
 
-A lot more tests
+More tests
+
+=item *
+
+Allow payload to be an arrayref for explicit ordering
 
 =back
 

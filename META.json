@@ -71,7 +71,7 @@
    "provides" : {
       "Config::MVP::Writer::INI" : {
          "file" : "lib/Config/MVP/Writer/INI.pm",
-         "version" : "0.001"
+         "version" : "0.002"
       }
    },
    "release_status" : "stable",
@@ -87,7 +87,7 @@
          "web" : "https://github.com/rwstauner/Config-MVP-Writer-INI"
       }
    },
-   "version" : "0.001",
+   "version" : "0.002",
    "x_Dist_Zilla" : {
       "perl" : {
          "version" : "5.014002"

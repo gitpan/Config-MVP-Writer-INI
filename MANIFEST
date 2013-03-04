@@ -11,6 +11,9 @@ lib/Config/MVP/Writer/INI.pm
 t/00-compile.t
 t/00-report-prereqs.t
 t/ini.t
+t/lib/IniTests.pm
+t/rewrite_package.t
+t/spacing.t
 xt/author/critic.t
 xt/author/pod-spell.t
 xt/author/test-eol.t
