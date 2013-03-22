@@ -12,9 +12,9 @@ use warnings;
 
 package Config::MVP::Writer::INI;
 {
-  $Config::MVP::Writer::INI::VERSION = '0.002';
+  $Config::MVP::Writer::INI::VERSION = '0.003';
 }
-# git description: v0.001-21-gc5e9bbd
+# git description: v0.002-8-g09312c9
 
 BEGIN {
   $Config::MVP::Writer::INI::AUTHORITY = 'cpan:RWSTAUNER';
@@ -25,11 +25,20 @@ use Moose;
 use Moose::Util::TypeConstraints;
 use List::AllUtils ();
 
+
 has spacing => (
   is         => 'ro',
   isa        => enum([qw( none all payload )]),
   default    => 'payload',
 );
+
+
+has strip_bundle_prefix => (
+  is         => 'ro',
+  isa        => 'Bool',
+  default    => 1,
+);
+
 
 
 has _rewrite_package => (
@@ -90,9 +99,24 @@ sub _ini_section {
     $package = $self->rewrite_package($_) || $package;
   }
 
-  # FIXME: this handles the bundle prefix but not the whole moniker (class suffix)
-  # NOTE: I forgot what this ^^ means
-  my $ini = "[$package" . ($name =~ m{^([^/]+/)*\Q$package\E$} ? '' : " / $name") . "]\n";
+  # this name matching junk could be better
+  {
+    # make leading punctuation optional for this comparison
+    my ($prefix, $moniker) = ($package =~ m/^(\W*)(.+)$/);
+
+    # Don't print the name if it's the same as the package moniker
+    # (ignoring possible bundle prefix and possible leading punctuation).
+    if( $name =~ m{^([^/]+/)*(\Q$prefix\E)?\Q$moniker\E$} ){
+      $name = ''
+    }
+    # else (if configured) just strip the whole prefix regardless
+    elsif( $self->strip_bundle_prefix ){
+      $name =~ s{^\@.+/}{};
+    }
+  }
+
+  # Only show the name if different from the package moniker
+  my $ini = "[$package" . ($name ? " / $name" : '') . "]\n";
 
   $ini .= $self->_ini_section_config($config);
 
@@ -141,8 +165,10 @@ sub _ini_section_config {
 
     foreach my $k ( sort keys %$config ){
       my $v = $config->{ $k };
+      $v = '' if !defined $v;
       push @lines,
-        map { sprintf "%-*s = %s\n", $len, $k, $_ }
+        # don't end a line with "=\x20" (when the value is '')
+        map { sprintf "%-*s =%s\n", $len, $k, (length($_) ? ' ' . $_ : '') }
           # one k=v line per array item
           ref $v eq 'ARRAY'
             ? @$v
@@ -178,7 +204,7 @@ Config::MVP::Writer::INI - Build an INI file for Config::MVP
 
 =head1 VERSION
 
-version 0.002
+version 0.003
 
 =head1 SYNOPSIS
 
@@ -195,27 +221,6 @@ from the output of a plugin bundle (L<Dist::Zilla>, L<Pod::Weaver>, etc.).
 The author makes no claim that this would actually be useful to anyone.
 
 =head1 ATTRIBUTES
-
-=head2 rewrite_package
-
-This attribute is a coderef that will be used to munge the package name
-of each section.  The package will be passed as the only argument
-(and also available as C<$_>) and should return the translation.
-If nothing is returned the original package will be used.
-
-This can be used to flavor the INI for a particular application.
-For example:
-
-  rewrite_package => sub { s/^MyApp::Plugin::/-/r; }
-
-will transform an array ref of
-
-  [ Stinky => 'MyApp::Plugin::Nickname' => {real_name => "Dexter"} ]
-
-into an INI string of
-
-  [-Nickname / Stinky]
-  real_name = Dexter
 
 =head2 spacing
 
@@ -237,6 +242,33 @@ Put a blank line between all sections
 No blank lines
 
 =back
+
+=head2 strip_bundle_prefix
+
+Boolean: Always remove the leading C<@BundleName/> part of a section name.
+This cuts down on the noise when the name is actually different
+from the package moniker (but the prefix isn't desired).  Defaults to true.
+
+=head2 rewrite_package
+
+This attribute is a coderef that will be used to munge the package name
+of each section.  The package will be passed as the only argument
+(and also available as C<$_>) and should return the translation.
+If nothing is returned the original package will be used.
+
+This can be used to flavor the INI for a particular application.
+For example:
+
+  rewrite_package => sub { s/^MyApp::Plugin::/-/r; }
+
+will transform an array ref of
+
+  [ Stinky => 'MyApp::Plugin::Nickname' => {real_name => "Dexter"} ]
+
+into an INI string of
+
+  [-Nickname / Stinky]
+  real_name = Dexter
 
 =head1 METHODS
 
